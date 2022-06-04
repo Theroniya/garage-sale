@@ -1,0 +1,139 @@
+Secondlife uses a Maja feature "bind matrix" and "restpose matrix". Blender does not support these features.
+
+Ada radius avoids these features as far as possible in her armature. But with the volume bones "restpose matrix" cannot be avoided. The built-in collada export uses custom bone properties for this feature. Previously "restpose_rot", "restpose_scale" and "restpose_loc". Today we are supposed to use "rest_mat" instead.
+
+Ada added the required custom bone properties, but the collada export ignores "restpose_rot".
+
+"rest_mat" does not work either. Due to another bug, the internal C++ data types get messed up and the exported file is unusable.
+
+The bugs only have an affect when you waight-paint vertices to the volume bones. These parts of the mesh are rotated by a few degrees after the upload. Hardly noticeable.
+
+If you export as "sl open sim static" you don't need "restpose mattix" at all. If you only need mBones for weight-painting you can ignore the bug.
+
+These errors have been reported years ago on the Blender bug list, but no one cares about it.
+
+So I patched blender quick&dirty. And postponed the solution until sometime. Compiling goes surprisingly smooth. Just copy the command line from blender.org and wait, wait, wait.
+
+
+diff --git a/source/blender/io/collada/ControllerExporter.cpp b/source/blender/io/collada/ControllerExporter.cpp
+index 38ad0e42d0f..b1b9f8e81af 100644
+--- a/source/blender/io/collada/ControllerExporter.cpp
++++ b/source/blender/io/collada/ControllerExporter.cpp
+@@ -32,6 +32,12 @@
+ 
+ #include "collada_utils.h"
+ 
++void bc_create_restpose_mat2(BCExportSettings &export_settings,
++                            Bone *bone,
++                            float to_mat[4][4],
++                            float from_mat[4][4],
++                            bool use_local_space);
++
+ bool ControllerExporter::is_skinned_mesh(Object *ob)
+ {
+   return bc_get_assigned_armature(ob) != nullptr;
+@@ -506,19 +512,19 @@ std::string ControllerExporter::add_inv_bind_mats_source(Object *ob_arm,
+ 
+         /* Have no bind matrix stored, try old style <= Blender 2.78 */
+ 
+-        bc_create_restpose_mat(
++        bc_create_restpose_mat2(
+             this->export_settings, pchan->bone, bind_mat, pchan->bone->arm_mat, true);
+ 
+         /* SL/OPEN_SIM COMPATIBILITY */
+-        if (export_settings.get_open_sim()) {
+-          float loc[3];
+-          float rot[3] = {0, 0, 0};
+-          float scale[3];
+-          bc_decompose(bind_mat, loc, nullptr, nullptr, scale);
++        //if (export_settings.get_open_sim()) {
++        //  float loc[3];
++        //  float rot[3] = {0, 0, 0};
++        //  float scale[3];
++        //  bc_decompose(bind_mat, loc, nullptr, nullptr, scale);
+ 
+           /* Only translations, no rotation vs armature */
+-          loc_eulO_size_to_mat4(bind_mat, loc, rot, scale, 6);
+-        }
++        //  loc_eulO_size_to_mat4(bind_mat, loc, rot, scale, 6);
++        //}
+       }
+ 
+       /* make world-space matrix (bind_mat is armature-space) */
+diff --git a/source/blender/io/collada/collada_utils.cpp b/source/blender/io/collada/collada_utils.cpp
+index 0c902700b6b..d99477acef8 100644
+--- a/source/blender/io/collada/collada_utils.cpp
++++ b/source/blender/io/collada/collada_utils.cpp
+@@ -946,6 +946,72 @@ void bc_apply_global_transform(Vector &to_vec, const BCMatrix &global_transform,
+   mul_v3_m4v3(to_vec, transform, to_vec);
+ }
+ 
++void bc_create_restpose_mat2(BCExportSettings &export_settings,
++                            Bone *bone,
++                            float to_mat[4][4],
++                            float from_mat[4][4],
++                            bool use_local_space)
++{
++  float loc[3];
++  float rot[3];
++  float scale[3];
++  static const float V0[3] = {0, 0, 0};
++
++  if (!has_custom_props(bone, export_settings.get_keep_bind_info(), "restpose_loc") &&
++      !has_custom_props(bone, export_settings.get_keep_bind_info(), "restpose_rot") &&
++      !has_custom_props(bone, export_settings.get_keep_bind_info(), "restpose_scale")) {
++    /* No need */
++    //copy_m4_m4(to_mat, from_mat);
++
++    //if sl or opensim
++    float loc[3];
++    float rot[3] = {0, 0, 0};
++    float scale[3];
++    bc_decompose(from_mat, loc, nullptr, nullptr, scale);
++    /* Only translations, no rotation vs armature */
++    loc_eulO_size_to_mat4(to_mat, loc, rot, scale, 6);
++
++    return;
++  }
++
++  bc_decompose(from_mat, loc, rot, nullptr, scale);
++  loc_eulO_size_to_mat4(to_mat, loc, rot, scale, 6);
++
++  if (export_settings.get_keep_bind_info()) {
++    bc_get_property_vector(bone, "restpose_loc", loc, loc);
++
++    if (use_local_space && bone->parent) {
++      Bone *b = bone;
++      while (b->parent) {
++        b = b->parent;
++        float ploc[3];
++        bc_get_property_vector(b, "restpose_loc", ploc, V0);
++        loc[0] += ploc[0];
++        loc[1] += ploc[1];
++        loc[2] += ploc[2];
++      }
++    }
++  }
++
++  if (export_settings.get_keep_bind_info()) {
++    if (bc_get_IDProperty(bone, "restpose_rot_x")) {
++      rot[0] = DEG2RADF(bc_get_property(bone, "restpose_rot_x", 0));
++    }
++    if (bc_get_IDProperty(bone, "restpose_rot_y")) {
++      rot[1] = DEG2RADF(bc_get_property(bone, "restpose_rot_y", 0));
++    }
++    if (bc_get_IDProperty(bone, "restpose_rot_z")) {
++      rot[2] = DEG2RADF(bc_get_property(bone, "restpose_rot_z", 0));
++    }
++  }
++
++  if (export_settings.get_keep_bind_info()) {
++    bc_get_property_vector(bone, "restpose_scale", scale, scale);
++  }
++
++  loc_eulO_size_to_mat4(to_mat, loc, rot, scale, 6);
++}
++
+ void bc_create_restpose_mat(BCExportSettings &export_settings,
+                             Bone *bone,
+                             float to_mat[4][4],
