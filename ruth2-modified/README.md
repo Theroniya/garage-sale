@@ -76,6 +76,13 @@ To upload the bvh in firestorm
 - Mesh avatars ignore "Hand Pose" and "Expression"
 
 
+### casual-cloth.blend ###
+
+Shirt and pants for "Ladies of Laisure". Compressed since github only allows 50MB.
+
+Export and upload just like ruth2v4pp.blend.
+
+
 ### Directory assets ###
 
 This dir contains the gimp files of the uploades images. And some images used by blender.
