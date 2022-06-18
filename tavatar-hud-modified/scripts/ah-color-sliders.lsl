@@ -4,22 +4,17 @@
 string COLOR_PICKER_LINK_NAME = "Color Picker";
 integer COLOR_PICKER_LINK = -1;
 vector cachedColor;
-
+integer cachedColorChanged = FALSE;
+ 
 string GLOW_PICKER_LINK_NAME = "Glow Picker";
 integer GLOW_PICKER_LINK = -1;
 float cachedGlow;
+integer cachedGlowChanged = FALSE;
 
 string SHINY_PICKER_LINK_NAME = "Shiny Picker";
 integer SHINY_PICKER_LINK = -1;
 integer cachedGloss;
-
-string FULLBRIGHT_PICKER_LINK_NAME = "Fullbright Picker";
-integer FULLBRIGHT_PICKER_LINK = -1;
-integer cachedFullBright;
-
-string ALPHAMODE_PICKER_LINK_NAME = "Alphamode Picker";
-integer ALPHAMODE_PICKER_LINK = -1;
-integer cachedAlphaMode;
+integer cachedGlossChanged = FALSE;
 
 //* Mesh config
 string           HUE_SAT_TEXTURE = "03422dcb-ab0b-18dd-ae48-5e271240677b";
@@ -342,6 +337,7 @@ vector getColor() {
 
 basicSetColor(vector hsv, vector rgb) {
     cachedColor = rgb;
+    cachedColorChanged = TRUE;
     if (COLOR_PICKER_LINK == -1) return; // error
     
     vector v = <hsv.z, hsv.z, hsv.z>;
@@ -372,6 +368,7 @@ float getGlow() {
     if (GLOW_PICKER_LINK == -1) return 0.0; // error
     vector v = getSliderValue(GLOW_PICKER_LINK, GLOW_INDICATOR_FACE, GLOW_RECT);
     cachedGlow = llPow(v.x, 4);
+    cachedGlowChanged = TRUE;
     return cachedGlow;
 }
 
@@ -384,6 +381,7 @@ basicSetGlowSlider(float glow) {
 
 setGlow(float glow) {
     cachedGlow = glow;
+    cachedGlowChanged = TRUE;
     basicSetGlowSlider(llPow(glow, 0.25));
 }
 
@@ -404,6 +402,7 @@ float getGloss() {
     if (SHINY_PICKER_LINK == -1) return 0; // error
     vector v = getSliderValue(SHINY_PICKER_LINK, SHINY_INDICATOR_FACE, SHINY_RECT);
     cachedGloss = (integer)(v.x * 255);
+    cachedGlossChanged = TRUE;
 //debug("cachedGloss = " + (string)cachedGloss);
     return cachedGloss;
 }
@@ -418,51 +417,8 @@ basicSetGlossSlider(float gloss) {
 setGloss(integer gloss) {
 //debug("setGloss " + (string)gloss);
     cachedGloss = gloss;
+    cachedGlossChanged = TRUE;
     basicSetGlossSlider(gloss / 255.0);
-}
-
-integer getFullBright() {
-    if (FULLBRIGHT_PICKER_LINK == -1) return 0; // error
-    integer faceNum;
-    for (faceNum = 0; faceNum < llGetLinkNumberOfSides(FULLBRIGHT_PICKER_LINK); faceNum++) {
-        float alpha = llList2Float(llGetLinkPrimitiveParams(FULLBRIGHT_PICKER_LINK, [PRIM_COLOR, faceNum]), 1);
-//debug("face: " + (string)faceNum + "; alpha: " + (string)alpha);
-        if (alpha > 0.5) {
-            cachedFullBright = faceNum;
-            return cachedFullBright;
-        }
-    }
-    cachedFullBright = 0;
-    return cachedFullBright;
-}
-
-setFullBright(integer on) {
-    cachedFullBright = on;
-    if (FULLBRIGHT_PICKER_LINK == -1) return; // error
-    llSetLinkAlpha(FULLBRIGHT_PICKER_LINK, 0.0, ALL_SIDES);
-    llSetLinkAlpha(FULLBRIGHT_PICKER_LINK, 1.0, on);
-}
-
-integer getAlphaMode() {
-    if (ALPHAMODE_PICKER_LINK == -1) return 0; // error
-    integer faceNum;
-    for (faceNum = 0; faceNum < llGetLinkNumberOfSides(ALPHAMODE_PICKER_LINK); faceNum++) {
-        float alpha = llList2Float(llGetLinkPrimitiveParams(ALPHAMODE_PICKER_LINK, [PRIM_COLOR, faceNum]), 1);
-//debug("face: " + (string)faceNum + "; alpha: " + (string)alpha);
-        if (alpha > 0.5) {
-            cachedAlphaMode = faceNum;
-            return cachedAlphaMode;
-        }
-    }
-    cachedAlphaMode = 0;
-    return cachedAlphaMode;
-}
-
-setAlphaMode(integer on) {
-    cachedAlphaMode = on;
-    if (ALPHAMODE_PICKER_LINK == -1) return; // error
-    llSetLinkAlpha(ALPHAMODE_PICKER_LINK, 0.0, ALL_SIDES);
-    llSetLinkAlpha(ALPHAMODE_PICKER_LINK, 1.0, on);
 }
 
 string lastNotifyColorChanged = "X";
@@ -470,14 +426,27 @@ string lastNotifyColorChanged = "X";
 basicNotifyColorChanged () {
     if (COLOR_PICKER_LINK < 0) return;
 
-    string msg = "color:" + (string)cachedColor;
-    if (GLOW_PICKER_LINK >= 0) msg += ":glow:" + (string)cachedGlow;
-    if (SHINY_PICKER_LINK >= 0) msg += ":specGloss:" + (string)cachedGloss;
-    if (FULLBRIGHT_PICKER_LINK >= 0) msg += ":fullbright:" + (string)cachedFullBright;
-    if (ALPHAMODE_PICKER_LINK >= 0) msg += ":alphaMode:" + (string)cachedAlphaMode + "|128";
+    string msg = "";
+    string prefix = "";
+    if (cachedColorChanged) {
+        msg += "color:" + (string)cachedColor;
+        cachedColorChanged = FALSE;
+        prefix = ":";
+    }
+    if (cachedGlowChanged && GLOW_PICKER_LINK >= 0) {
+        msg += prefix;
+        msg += "glow:" + (string)cachedGlow;
+        cachedGlowChanged = FALSE;
+        prefix = ":";
+    }
+    if (cachedGlossChanged && SHINY_PICKER_LINK >= 0) {
+        msg += prefix;
+        msg += "specGloss:" + (string)cachedGloss;
+        cachedGlossChanged = FALSE;
+    }
 //debug("basicNotifyColorChanged " + lastNotifyColorChanged + " -> " + msg);
 
-    if (lastNotifyColorChanged == msg) {
+    if (msg == "" || lastNotifyColorChanged == msg) {
         return;
     }
     lastNotifyColorChanged = msg;
@@ -500,8 +469,6 @@ integer setAllColorPickers(list config) {
     vector color = <-999, -999, -999>;
     float glow = -999;
     integer gloss = -999;
-    integer fullBright = -999;
-    integer alphaMode = -999;
 
     integer i;
     for (i = 0; i < llGetListLength(config); i+=2) {
@@ -510,15 +477,11 @@ integer setAllColorPickers(list config) {
         if (type == "color") color = (vector)value;
         else if (type == "glow") glow = (float)value;
         else if (type == "specGloss") gloss = (integer)value;
-        else if (type == "fullbright") fullBright = (integer)value;
-        else if (type == "alphaMode") alphaMode = (integer)value;
     }
 
     COLOR_PICKER_LINK = -1;
     GLOW_PICKER_LINK = -1;
     SHINY_PICKER_LINK = -1;
-    FULLBRIGHT_PICKER_LINK = -1;
-    ALPHAMODE_PICKER_LINK = -1;
 
     for (i = 0; i <= llGetNumberOfPrims(); i++) {
         string linkName = llGetLinkName(i);
@@ -534,14 +497,6 @@ integer setAllColorPickers(list config) {
             SHINY_PICKER_LINK = i;
             getGloss(); // cache it
             if (gloss != -999) setGloss(gloss);
-        } else if (linkName == FULLBRIGHT_PICKER_LINK_NAME) {
-            FULLBRIGHT_PICKER_LINK = i;
-            getFullBright(); // cache it
-            if (fullBright != -999) setFullBright(fullBright);
-        } else if (linkName == ALPHAMODE_PICKER_LINK_NAME) {
-            ALPHAMODE_PICKER_LINK = i;
-            getAlphaMode(); // cache it
-            if (alphaMode != -999) setAlphaMode(alphaMode);
         }
     }
 
@@ -674,14 +629,6 @@ default {
             onGlowTouched(linkNum, faceNum, rawInput);
         } else if (linkName == SHINY_PICKER_LINK_NAME) {
             onShinyTouched(linkNum, faceNum, rawInput);
-        } else if (linkName == FULLBRIGHT_PICKER_LINK_NAME) {
-            FULLBRIGHT_PICKER_LINK = linkNum; // activate this picker
-            setFullBright(!getFullBright());
-            notifyColorChanged();
-        } else if (linkName == ALPHAMODE_PICKER_LINK_NAME) {
-            ALPHAMODE_PICKER_LINK = linkNum; // activate this picker
-            setAlphaMode((getAlphaMode()+1)%4);
-            notifyColorChanged();
         } else if (linkName == COLOR_HELP) {
             onHelpTouched();
         }
@@ -737,7 +684,13 @@ default {
             lastNotifyColorChanged = "X";
             list config = llParseString2List(str, [";", ":"], []);
             if (setAllColorPickers(config)) {
-                if (num == SET_COLOR) notifyColorChanged();
+                if (num == SET_COLOR) {
+                    notifyColorChanged();
+                } else {
+                    cachedColorChanged = FALSE;
+                    cachedGlowChanged = FALSE;
+                    cachedGlossChanged = FALSE;
+                }
             } else {
                 llSay(DEBUG_CHANNEL, "Color Picker prim is missing from the linkset");
             }

@@ -2,9 +2,22 @@
 
 // This file is in the publich domain. You can do whatever you wish.
 
+integer HUD_PLANE_CHANGED = 83759837;
+
 integer hudShown;
 integer hudActive;
 
+list hudXOffsetRange =  [0.3, 0.7, 1.3, 1.7, 2.3];
+list backXOffsetRange = [2.3, 2.7];
+
+list hudSwitchButtonsOn =  [<-0.01260, 0.163933, 0.13405>, <0.01630, 0.120813, 0.143066>, <0.01605, 0.085498, 0.143073>, <0.01582, 0.050183, 0.143066>,
+                            <0.01630, 0.120813, 0.125153>];
+list hudSwitchButtonsOff = [<-0.01260, 0.163933, 0.13405>, <0.01630, 0.163933, 0.13405>, <0.01630, 0.163933, 0.13405>, <0.01630, 0.163933, 0.13405>, 
+                            <0.01630, 0.163933, 0.13405>];
+list hudRightButtonsOff =  [<-0.01260, -0.163933, 0.13405>, <0.01630, -0.163933, 0.13405>, <0.01630, -0.163933, 0.13405>, <0.01630, -0.163933, 0.13405>,
+                            <0.01141, -0.163933, 0.13405>];
+
+/*
 list hudXOffsetRange =  [0.3, 0.7, 1.3, 1.7, 2.3, 2.7, 3.3];
 list backXOffsetRange = [3.3, 3.7, 4.3, 4.7, 5.3];
 
@@ -14,7 +27,7 @@ list hudSwitchButtonsOff = [<-0.01260, 0.163933, 0.13405>, <0.01630, 0.163933, 0
                             <0.01630, 0.163933, 0.13405>, <0.01630, 0.163933, 0.13405>];
 list hudRightButtonsOff =  [<-0.01260, -0.163933, 0.13405>, <0.01630, -0.163933, 0.13405>, <0.01630, -0.163933, 0.13405>, <0.01630, -0.163933, 0.13405>,
                             <0.01141, -0.163933, 0.13405>, <0.01630, -0.163933, 0.13405>];
-
+*/
 /*                            
 list hudSwitchButtonsOn =  [<-0.01260, 0.23419, 0.19150>, <0.01630, 0.17259, 0.20438>, <0.01605, 0.12214, 0.20439>, <0.01582, 0.07169, 0.20438>,
                             <0.01630, 0.17259, 0.17879>, <0.01630, 0.12214, 0.17879>];
@@ -49,18 +62,28 @@ rotateHud(integer hudNumber, integer show) {
         rot = rotHidden;
         rotColorPicker = rotHiddenColorPicker;
     }
+
+    //float xOffsetMin1 = llList2Float(hudXOffsetRange, hudNumber -1);
+    //float xOffsetMax1 = llList2Float(hudXOffsetRange, hudNumber);
+    //float xOffsetMin2 = xOffsetMin1;
+    //float xOffsetMax2 = xOffsetMax1;
+    //if (hudNumber == 4 || hudNumber == 5) {
+    //    xOffsetMin2 = llList2Float(hudXOffsetRange, 6 -1);
+    //    xOffsetMax2 = llList2Float(hudXOffsetRange, 6);
+    //}
+    //integer backplane = hudNumber;
+    //if (hudNumber == 5) backplane = 4;
+    //float xOffsetMin3 = llList2Float(backXOffsetRange, backplane -1);
+    //float xOffsetMax3 = llList2Float(backXOffsetRange, backplane);
+
     float xOffsetMin1 = llList2Float(hudXOffsetRange, hudNumber -1);
     float xOffsetMax1 = llList2Float(hudXOffsetRange, hudNumber);
-    float xOffsetMin2 = xOffsetMin1;
-    float xOffsetMax2 = xOffsetMax1;
-    if (hudNumber == 4 || hudNumber == 5) {
-        xOffsetMin2 = llList2Float(hudXOffsetRange, 6 -1);
-        xOffsetMax2 = llList2Float(hudXOffsetRange, 6);
-    }
-    integer backplane = hudNumber;
-    if (hudNumber == 5) backplane = 4;
+    float xOffsetMin2 = llList2Float(hudXOffsetRange, 3);
+    float xOffsetMax2 = llList2Float(hudXOffsetRange, 4);
+    integer backplane = 1;
     float xOffsetMin3 = llList2Float(backXOffsetRange, backplane -1);
     float xOffsetMax3 = llList2Float(backXOffsetRange, backplane);
+    
     integer linkNumber;
     for (linkNumber = 0; linkNumber <= llGetNumberOfPrims(); linkNumber++) {
         vector localPos = llList2Vector(llGetLinkPrimitiveParams(linkNumber,[PRIM_POS_LOCAL]),0);
@@ -96,6 +119,9 @@ moveHudButtons() {
         if (llGetListLength(nameParts) == 2 && llList2String(nameParts, 0) == "hudswitch") {
             vector linkPos = llList2Vector(pos, (integer) llList2String(nameParts, 1));
             //debug("hudswitch " + llList2String(nameParts, 1) + " -> " + (string)linkPos);
+            llSetLinkPrimitiveParamsFast(linkNumber, [PRIM_POS_LOCAL, linkPos] );
+        } else if (llList2String(nameParts, 0) == "huddetach") {
+            vector linkPos = llList2Vector(pos, 4); //FIXME
             llSetLinkPrimitiveParamsFast(linkNumber, [PRIM_POS_LOCAL, linkPos] );
         } else if (llList2String(nameParts, 0) == "hudhide") {
             vector linkPos = llList2Vector(pos, 0);
@@ -191,13 +217,18 @@ default
         rotShownColorPicker = llEuler2Rot(<0.0, 3.0/2.0*PI, 3.0/2.0*PI>);
         //rotHiddenColorPicker = llEuler2Rot(<0.0, 1.0/2.0*PI, 3.0/2.0*PI>);
         rotHiddenColorPicker = llEuler2Rot(<    0.0, 0.0, 3.0/2.0*PI>);
-        hudShown = 3;
-        hudActive = 3;
-        rotateHud(1, 0);
+        //hudShown = 3;
+        //hudActive = 3;
+        //rotateHud(1, 0);
+        //rotateHud(2, 0);
+        //rotateHud(3, 2);
+        //rotateHud(4, 0);
+        //rotateHud(5, 0);
+        hudShown = 1;
+        hudActive = 1;
         rotateHud(2, 0);
-        rotateHud(3, 2);
-        rotateHud(4, 0);
-        rotateHud(5, 0);
+        rotateHud(3, 0);
+        rotateHud(1, 2);
         moveHudButtons();
         //llOwnerSay(llGetScriptName() + " Free memory: " + (string)llGetFreeMemory());
     }
@@ -243,7 +274,17 @@ default
                 hudShown = plane;
                 hudActive = plane;
                 rotateHud(hudActive, 2);
+                llMessageLinked(LINK_SET, HUD_PLANE_CHANGED, (string)plane, "");
             }
+        } else if (linkName == "huddetach") {
+            llRequestPermissions(llGetOwner(), PERMISSION_ATTACH);
+        }
+    }
+    
+    run_time_permissions(integer perm)
+    {
+        if(perm & PERMISSION_ATTACH) {
+            llDetachFromAvatar( );
         }
     }
 }

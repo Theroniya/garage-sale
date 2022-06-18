@@ -3,9 +3,11 @@
 
 integer USE_ALPHA = FALSE;
 integer USE_COLOR = TRUE;
+integer USE_SPEC_COLOR = TRUE;
 
 // The channel used for communication between the HUD and this slave. This must match in all scripts. Using the default of -841511254 is fine; products won't interfere unless they have the same face names. Texture scripts will also not interfere unless the passphrase matches. Nonetheless, Changing it is a fairly simple way to guarantee that different products of yours don't interfere
-integer HUD_CHANNEL = -841511254;
+//integer HUD_CHANNEL = -841511254;
+integer HUD_CHANNEL = -841511255;
 
 // This configuration will be applied whenever this script is reset or sold
 list DEFAULT_CONFIG = [];
@@ -87,17 +89,20 @@ setColor(integer linkNumber, integer face, string configString) {
 setFaceColor(integer linkNumber, integer face, string configString) {
     if (!checkFaceExists(linkNumber, face)) return;
     list config = llParseString2List(configString, [":"], []);
-    list params = [];
+    //list params = [];
     integer i;
     //debug("setColor1(" + (string) linkNumber + ", " + (string) face + ", " + llList2CSV(config));
     for (i = 0; i < llGetListLength(config); i+=2) {
+        list params = [];
         string type = llList2String(config, i);
         string value = llList2String(config, i+1);
+        //debug("setColor2: " + (string)linkNumber + " " + type);
         if (type == "color") {
             //debug("setColor4: " + (string)linkNumber + ", " + value + ", " + (string)face);
             llSetLinkColor(linkNumber, (vector)value, face);
             //llSetLinkColor(0, <0.8, 0.8, 0.8>, ALL_SIDES);
         } else if (type == "alpha") {
+            //debug("setColor5 " + (string)linkNumber + ", " + value + ", " + (string)face);
             llSetLinkAlpha(linkNumber, (float)value, face);
         } else if (type == "glow") {
             params += [PRIM_GLOW, face, (float)value];
@@ -120,11 +125,18 @@ setFaceColor(integer linkNumber, integer face, string configString) {
             list p = llGetLinkPrimitiveParams(linkNumber, [PRIM_SPECULAR, readFace]);
             p = llListReplaceList(p, [(integer)value], 5, 5);
             params += [PRIM_SPECULAR, face] + p;
+        } else if (type == "specColor") {
+            //FIXME more then one parameter in group
+            integer readFace = face;
+            if (face == ALL_SIDES) readFace = 0; //FIXME
+            list p = llGetLinkPrimitiveParams(linkNumber, [PRIM_SPECULAR, readFace]);
+            p = llListReplaceList(p, [(vector)value], 4, 4);
+            params += [PRIM_SPECULAR, face] + p;
         }
-    }
-    if (params) {
+        if (params) {
 //debug("setColor3: " + llList2CSV(params));
-        llSetLinkPrimitiveParamsFast(linkNumber, params);
+            llSetLinkPrimitiveParamsFast(linkNumber, params);
+        }
     }
 }
 
@@ -288,7 +300,7 @@ sendColorSyncCommandChunk() {
     string params = COLOR_SYNC_COMMAND;
     while (cscLinkNumber <= llGetNumberOfPrims()) {
         list colorGroups = linkColorGroups(cscLinkNumber, FALSE);
-        //debug("colorGroups " + llList2CSV(colorGroups));
+        debug("colorGroups " + llList2CSV(colorGroups));
         while (cscGroupNumber < llGetListLength(colorGroups)) {
             //llOwnerSay((string) done + " Free Memory " + (string)llGetFreeMemory());
             string group = llList2String(colorGroups, cscGroupNumber);
@@ -316,16 +328,35 @@ sendColorSyncCommandChunk() {
                 ]);
                 string toAdd = ";" + group + ";";
                 vector c = llList2Vector(p, 0);
+                string prefix = "";
                 if (USE_COLOR) {
                     toAdd += "color:<" + llGetSubString((string)c.x, 0, 4) +  "," + llGetSubString((string)c.y, 0, 4) +  "," + llGetSubString((string)c.z, 0, 4) + ">";
                     toAdd += ":glow:" + llGetSubString(llList2String(p, 2), 0, 4);
                     toAdd += ":specGloss:" + llList2String(p, 8);
+                    prefix = ":";
                 }
-                if (USE_COLOR && USE_ALPHA) {
-                    toAdd += ":";
+                vector sc = llList2Vector(p, 7);
+                if (USE_SPEC_COLOR) {
+                    toAdd += prefix;
+                    toAdd += "specColor:<" + llGetSubString((string)sc.x, 0, 4) +  "," + llGetSubString((string)sc.y, 0, 4) +  "," + llGetSubString((string)sc.z, 0, 4) + ">";
+                    prefix = ":";
                 }
                 if (USE_ALPHA) {
+                    toAdd += prefix;
                     toAdd += "alpha:" + llGetSubString(llList2String(p, 1), 0, 4);
+                    prefix = ":";
+                }
+                if (group == "pants5") { //FIXME: dummy for HUD
+                    toAdd += ";pants6;";
+                    toAdd += "color:<" + llGetSubString((string)c.x, 0, 4) +  "," + llGetSubString((string)c.y, 0, 4) +  "," + llGetSubString((string)c.z, 0, 4) + ">";
+                    toAdd += ":glow:" + llGetSubString(llList2String(p, 2), 0, 4);
+                    toAdd += ":specGloss:" + llList2String(p, 8);
+                    toAdd += ":specColor:<" + llGetSubString((string)sc.x, 0, 4) +  "," + llGetSubString((string)sc.y, 0, 4) +  "," + llGetSubString((string)sc.z, 0, 4) + ">";
+                    toAdd += ";pants7;";
+                    toAdd += "color:<" + llGetSubString((string)c.x, 0, 4) +  "," + llGetSubString((string)c.y, 0, 4) +  "," + llGetSubString((string)c.z, 0, 4) + ">";
+                    toAdd += ":glow:" + llGetSubString(llList2String(p, 2), 0, 4);
+                    toAdd += ":specGloss:" + llList2String(p, 8);
+                    toAdd += ":specColor:<" + llGetSubString((string)sc.x, 0, 4) +  "," + llGetSubString((string)sc.y, 0, 4) +  "," + llGetSubString((string)sc.z, 0, 4) + ">";
                 }
                 if (llStringLength(params) + llStringLength(toAdd) > 1000) {
                     //debug("send chunk");
@@ -402,7 +433,7 @@ default {
         startListeners();
         sendColorSyncCommand();
         //setFacesByGroup(DEFAULT_CONFIG); FIXME
-        //llOwnerSay(llGetScriptName() + ": " + (string)llGetFreeMemory() + " bytes free");
+        llOwnerSay(llGetScriptName() + ": " + (string)llGetFreeMemory() + " bytes free");
     }
 
     changed(integer change) {

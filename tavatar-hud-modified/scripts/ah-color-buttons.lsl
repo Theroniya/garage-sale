@@ -1,7 +1,8 @@
 // this is a modified version of
 // https://marketplace.secondlife.com/p/Tavatar-ColorTexture-HUD-Kit-Free/4299174
 
-integer HUD_CHANNEL = -841511254;       // channel for HUD communications
+//integer HUD_CHANNEL = -841511254;       // channel for HUD communications
+integer HUD_CHANNEL = -841511255;       // channel for HUD communications
 string COLOR_SYNC_COMMAND = "colorsync";
 string COLOR_SYNC_REQUEST = "colorsyncrequest";
 
@@ -9,18 +10,12 @@ string COLOR_SYNC_REQUEST = "colorsyncrequest";
 integer SET_COLOR = 93759837;
 integer COLOR_CHANGED = 93759838;
 integer SET_COLOR_SYNC = 93759839;
+integer HUD_PLANE_CHANGED = 83759837;
 
 // the color button that was clicked and whose color will be sent to the avatar
-integer activeColorButtonNails = -1;
-integer activeColorButtonNailsReadFace = 0;
-integer activeColorButtonNailsWriteFace = 0;
-integer activeColorButtonPrivate = -1;
-integer activeColorButtonPrivateReadFace = 0;
-integer activeColorButtonPrivateWriteFace = 0;
-
-//integer activeColorButton = -1;
-//integer activeColorButtonReadFace = 0;
-//integer activeColorButtonWriteFace = 0;
+list activeColorButton = [-1, -1, -1];
+list activeColorButtonReadFace = [0, 0, 0];
+list activeColorButtonWriteFace = [0, 0, 0];
 
 // the selected color indicator
 integer selectedColorGadget = -999;
@@ -254,7 +249,9 @@ setSelectedColorGadget() {
             }
         }
     }
-    if (selectedColorGadget >= 0 && getActiveColorButton() >= 0 && getActiveColorButton() == activeColorButtonNails) {
+    //if (selectedColorGadget >= 0 && getActiveColorButton() >= 0 && getActiveColorButton() == activeColorButtonNails) {
+    //debug("setSelectedColorGadget " + (string)selectedColorGadget + " " + (string)getActiveColorButton());
+    if (selectedColorGadget >= 0 && getActiveColorButton() >= 0) {
         if (!selectedColorGadgetVisible) {
             llSetLinkAlpha(selectedColorGadget, 1.0, ALL_SIDES);
             selectedColorGadgetVisible = TRUE;
@@ -271,54 +268,63 @@ setSelectedColorGadget() {
 ////////////////////// Color Button Functions //////////////////////
 ////////////////////////////////////////////////////////////////////
 
-integer getActiveColorButton() {
-    if (activeColorButtonNails == -1 ) return -1;
-    rotation localRot=llList2Rot(llGetLinkPrimitiveParams(activeColorButtonNails,[PRIM_ROT_LOCAL]),0);
-    vector r = llRot2Euler(localRot);
-    if (llRound(r.y) == 0) {
-        //debug("getActiveColorButton nails " + (string)r + " " + llGetLinkDesc(activeColorButtonNails));
-        return activeColorButtonNails;
-    } else {
-        //debug("getActiveColorButton private " + (string)r + " " + llGetLinkDesc(activeColorButtonNails));
-        return activeColorButtonPrivate;
+integer getActiveColorButtonIdx() {
+    integer idx;
+    for (idx = 0; idx < llGetListLength(activeColorButton); idx++) {
+        integer linkNum = llList2Integer(activeColorButton, idx);
+        if (linkNum > 0) {
+            rotation localRot=llList2Rot(llGetLinkPrimitiveParams(linkNum,[PRIM_ROT_LOCAL]),0);
+            vector r = llRot2Euler(localRot);
+            if (llRound(r.y) == 0) {
+                //debug("getActiveColorButtonIdx " + (string)idx);
+                return idx;
+            }
+        }
     }
+    return -1;
+}
+
+integer getActiveColorButton() {
+    integer idx = getActiveColorButtonIdx();
+    if (idx >= 0) {
+        return llList2Integer(activeColorButton, idx);
+    }
+    return -1;
 }
 
 integer getActiveColorButtonReadFace() {
-    if (getActiveColorButton() == activeColorButtonNails) {
-        return activeColorButtonNailsReadFace;
-    } else {
-        return activeColorButtonPrivateReadFace;
-    }    
+    integer idx = getActiveColorButtonIdx();
+    if (idx >= 0) {
+        return llList2Integer(activeColorButtonReadFace, idx);
+    }
+    return -1;
 }
 
 integer getActiveColorButtonWriteFace() {
-    if (getActiveColorButton() == activeColorButtonNails) {
-        return activeColorButtonNailsWriteFace;
-    } else {
-        return activeColorButtonPrivateWriteFace;
-    }    
+    integer idx = getActiveColorButtonIdx();
+    if (idx >= 0) {
+        return llList2Integer(activeColorButtonWriteFace, idx);
+    }
+    return -1;
 }
 
 setActiveColorButtonReadFace(integer face) {
-    if (getActiveColorButton() == activeColorButtonNails) {
-        activeColorButtonNailsReadFace = face;
-    } else {
-        activeColorButtonPrivateReadFace = face;
-    }    
+    integer idx = getActiveColorButtonIdx();
+    if (idx >= 0) {
+        activeColorButtonReadFace = llListReplaceList(activeColorButtonReadFace, [face], idx, idx);
+    }
 }
 
 setActiveColorButtonWriteFace(integer face) {
-    if (getActiveColorButton() == activeColorButtonNails) {
-        activeColorButtonNailsWriteFace = face;
-    } else {
-        activeColorButtonPrivateWriteFace = face;
-    }    
+    integer idx = getActiveColorButtonIdx();
+    if (idx >= 0) {
+        activeColorButtonWriteFace = llListReplaceList(activeColorButtonWriteFace, [face], idx, idx);
+    }
 }
 
 integer isColorButton(integer linkNumber) {
     string linkName = llGetLinkName(linkNumber);
-    return linkName == "basic button" || linkName == "image button";
+    return linkName == "basic button" || linkName == "image button" || linkName == "specColor image button";
 }
 
 integer isTextureButton(integer linkNumber) {
@@ -329,24 +335,30 @@ integer isTextureButton(integer linkNumber) {
 setButtonColor(integer linkNumber, string configString) {
     list config = llParseString2List(configString, [":"], []);
     string linkName = llGetLinkName(linkNumber);
-//debug("setButtonColor1(" + (string) linkNumber + ", " + linkName + ", " + printList(config) + ")");
+//debug("setButtonColor1(" + (string) linkNumber + ", " + linkName + ", " + llList2CSV(config) + ")");
     integer i;
     list params = [];
     for (i = 0; i < llGetListLength(config); i+=2) {
         string type = llList2String(config, i);
         string value = llList2String(config, i+1);
         //debug("setButtonColor2(" + (string) linkNumber + ", " + linkName + ", " + type + ", " + value + ")");
-        if (type == "color") {
+        if (type == "color" && linkName == "basic button") {
             vector color = (vector)value;
-            if (linkName == "basic button") {
-                llSetLinkColor(linkNumber, color, getActiveColorButtonWriteFace());
-            } else if (linkName == "image button") {
-                llSetLinkColor(linkNumber, color, ALL_SIDES);
-                // 2 layer mesh button: 0: background. 1: foreground
-                llSetLinkColor(linkNumber, contrastingColor(color), 1);
-                // cube button: 5: background. 4: foreground
-                llSetLinkColor(linkNumber, contrastingColor(color), 4);
-            }
+            llSetLinkColor(linkNumber, color, getActiveColorButtonWriteFace());
+        } else if (type == "color" && linkName == "image button") {
+            vector color = (vector)value;
+            llSetLinkColor(linkNumber, color, ALL_SIDES);
+            // 2 layer mesh button: 0: background. 1: foreground
+            llSetLinkColor(linkNumber, contrastingColor(color), 1);
+            // cube button: 5: background. 4: foreground
+            llSetLinkColor(linkNumber, contrastingColor(color), 4);
+        } else if (type == "specColor" && linkName == "specColor image button") {
+            vector color = (vector)value;
+            llSetLinkColor(linkNumber, color, ALL_SIDES);
+            // 2 layer mesh button: 0: background. 1: foreground
+            llSetLinkColor(linkNumber, contrastingColor(color), 1);
+            // cube button: 5: background. 4: foreground
+            llSetLinkColor(linkNumber, contrastingColor(color), 4);
         }
         else if (type == "glow") {
             params += [PRIM_GLOW, getActiveColorButtonWriteFace(), ((float)value)];
@@ -359,28 +371,22 @@ setButtonColor(integer linkNumber, string configString) {
         }
     }
     if (params) {
-//debug("setButtonColor3: " + printList(params));
+//debug("setButtonColor3: " + llList2CSV(params));
         llSetLinkPrimitiveParamsFast(linkNumber, params);
     }
 }
 
 //FIXME also use a:1:b:2 for sending to sliders
-list getButtonColor(integer linkNumber) {
-    list params = llGetLinkPrimitiveParams(linkNumber, [
+list getColorForSliders() {
+    list params = llGetLinkPrimitiveParams(getActiveColorButton(), [
         PRIM_COLOR, getActiveColorButtonReadFace(),
         PRIM_GLOW, getActiveColorButtonReadFace(),
-        //PRIM_BUMP_SHINY, activeColorButtonReadFace,
-        //PRIM_FULLBRIGHT, activeColorButtonReadFace,
-        //PRIM_ALPHA_MODE, activeColorButtonReadFace,
-        PRIM_SPECULAR, 0
+        PRIM_SPECULAR, getActiveColorButtonReadFace()
     ]);
     //debug("getButtonColor " + llDumpList2String(params, ";"));
     return [
         "color:"      + llList2String(params, 0),
         "glow:"       + (string)(llList2Float(params, 2)),
-        //"shiny:"      + llList2String(params, 3),
-        //"fullbright:" + llList2String(params, 5),
-        //"alphaMode:"  + llList2String(params, 6) + "|128",
         "specGloss:" + llList2String(params, 8)
     ];
 }
@@ -468,11 +474,9 @@ list colorButtonParams(integer linkNumber, string color) {
 
 setActiveColorButton(integer linkNumber, integer faceNumber) {
     vector localPos=llList2Vector(llGetLinkPrimitiveParams(linkNumber,[PRIM_POS_LOCAL]),0);
-    if (localPos.x > 1.7 && localPos.x < 2.3) {
-        activeColorButtonNails = linkNumber;
-    } else {
-        activeColorButtonPrivate = linkNumber;
-    }
+    integer idx = (integer)((localPos.x - 0.3)*2);
+    //debug("localPos.x " + (string)localPos.x + " -> " + (string)((localPos.x - 0.2)*2) + " -> " + (string)idx);
+    activeColorButton = llListReplaceList(activeColorButton, [linkNumber], idx, idx);
     if (llGetLinkName(linkNumber) == "basic button") {
         setActiveColorButtonReadFace(faceNumber);
         setActiveColorButtonWriteFace(faceNumber);
@@ -483,13 +487,13 @@ setActiveColorButton(integer linkNumber, integer faceNumber) {
     setSelectedColorGadget();
 }
 
-list getActiveColor() {
-    return getButtonColor(getActiveColorButton());
-}
-
 setActiveColor(string color) {
+    if (llGetLinkName(getActiveColorButton()) == "specColor image button") {
+        color =  "specColor" + llGetSubString(color, 5,  -1); //FIXME
+        //debug("setActiveColor1: " + color + " -> " + tmp);
+    }
     list params = colorButtonParams(getActiveColorButton(), color);
-//debug("setActiveColor: " + color + ", " + printList(params));
+//debug("setActiveColor: " + color + " -> " + llList2CSV(params));
     sendToAvatar(["color"] + params);
     setAllButtonColorParams(params);
 }
@@ -679,7 +683,7 @@ sendTo(key id, list message) {
 
 sendToAvatar(list message) {
     string s = llDumpList2String(message, ";");
-    //debug("sendToAvatar " + s);
+    debug("sendToAvatar " + s);
     llSay(channel(), s);
 }
 
@@ -694,19 +698,38 @@ init() {
     for (linkNumber = 0; linkNumber <= llGetNumberOfPrims(); linkNumber++) {
         string linkName = llGetLinkName(linkNumber);
         string linkDesc = llGetLinkDesc(linkNumber);
-        if (linkName == "image button" && linkDesc == "fnLF,fnLT,fnRF,fnRT") {
-            //debug("init nails default " + (string)linkNumber);
-            activeColorButtonNails = linkNumber;
-            activeColorButtonNailsReadFace = 0;
-            activeColorButtonNailsWriteFace = ALL_SIDES;
+        //if (linkName == "image button" && linkDesc == "fnLF,fnLT,fnRF,fnRT") {
+        //    //debug("init nails default " + (string)linkNumber);
+        //    activeColorButtonNails = linkNumber;
+        //    activeColorButtonNailsReadFace = 0;
+        //    activeColorButtonNailsWriteFace = ALL_SIDES;
+        //}
+        //if (linkName == "image button" && linkDesc == "privateTint") {
+        //    //debug("init private default " + (string)linkNumber);
+        //    activeColorButtonPrivate = linkNumber;
+        //    activeColorButtonPrivateReadFace = 0;
+        //    activeColorButtonPrivateWriteFace = ALL_SIDES;
+        //}
+        if (linkName == "image button" && linkDesc == "pants0,pants1,pants2,pants3,pants4,pants5,pants6,pants7") {
+            //debug("init default 0 " + (string)linkNumber);
+            activeColorButton = llListReplaceList(activeColorButton, [linkNumber], 0, 0);
+            setActiveColorButtonReadFace(0);
+            setActiveColorButtonWriteFace(ALL_SIDES);
         }
-        if (linkName == "image button" && linkDesc == "privateTint") {
-            //debug("init private default " + (string)linkNumber);
-            activeColorButtonPrivate = linkNumber;
-            activeColorButtonPrivateReadFace = 0;
-            activeColorButtonPrivateWriteFace = ALL_SIDES;
+        if (linkName == "image button" && linkDesc == "shirt0,shirt1,shirt2,shirt3,shirt4,shirt5,shirt6,shirt7") {
+            //debug("init default 1 " + (string)linkNumber);
+            activeColorButton = llListReplaceList(activeColorButton, [linkNumber], 1, 1);
+            setActiveColorButtonReadFace(0);
+            setActiveColorButtonWriteFace(ALL_SIDES);
+        }
+        if (linkName == "image button" && linkDesc == "string0,string1") {
+            //debug("init default 2 " + (string)linkNumber);
+            activeColorButton = llListReplaceList(activeColorButton, [linkNumber], 2, 2);
+            setActiveColorButtonReadFace(0);
+            setActiveColorButtonWriteFace(ALL_SIDES);
         }
     }
+    //debug("init " + llList2CSV(activeColorButton));
 }
 
 default {
@@ -716,7 +739,7 @@ default {
 
     state_entry() {
         init();
-        //llOwnerSay(llGetScriptName() + " Free memory: " + (string)llGetFreeMemory());
+        llOwnerSay(llGetScriptName() + " Free memory: " + (string)llGetFreeMemory());
         setSelectedColorGadget();
         listenForSyncRequests();
         sendToAvatar([COLOR_SYNC_REQUEST]);
@@ -738,11 +761,9 @@ default {
         if (isColorButton(linkNumber)) {
             setActiveColorButton(linkNumber, faceNumber);
 //debug("send set_color " + llDumpList2String(getActiveColor(), ";"));
-            llMessageLinked(LINK_SET, SET_COLOR_SYNC, llDumpList2String(getActiveColor(), ";"), "");
+            llMessageLinked(LINK_SET, SET_COLOR_SYNC, llDumpList2String(getColorForSliders(), ";"), "");
         } else if (isTextureButton(linkNumber)) {
             processTexture(linkNumber);
-        } else if ((linkName == "hudswitch 4" || linkName == "hudswitch 5") && getActiveColorButton() >= 0) {
-            llMessageLinked(LINK_SET, SET_COLOR_SYNC, llDumpList2String(getActiveColor(), ";"), "");
         } else if (linkName == "hide") {
             list colorGroups = linkFaceColorGroups(linkDesc, faceNumber);
             integer visible = toggleHideButtonValue(linkNumber, faceNumber);
@@ -762,6 +783,12 @@ default {
                 return;
             }
             setActiveColor(str);
+        } else if (num == HUD_PLANE_CHANGED) {
+            //debug("HUD PLANE CHANGED " + str);
+            if (getActiveColorButton() >= 0) {
+                llMessageLinked(LINK_SET, SET_COLOR_SYNC, llDumpList2String(getColorForSliders(), ";"), "");
+                setSelectedColorGadget();
+            }
         }
     }
 
@@ -770,7 +797,7 @@ default {
         msg = "";
         if  (llList2String(params, 0) == COLOR_SYNC_COMMAND) {
             params = llList2List(params, 1, -1);
-            //debug("COLORSYNC " + printList(params));
+            debug("COLORSYNC " + llList2CSV(params));
             //processSync(params);
             //debug("ps1 " + (string)llGetFreeMemory());
             //debug("processSync([" + llList2CSV(params) + "])");
@@ -785,7 +812,7 @@ default {
             //debug("ps2 " + (string)llGetFreeMemory());
 
             if (getActiveColorButton() >= 0) {
-                llMessageLinked(LINK_SET, SET_COLOR_SYNC, llDumpList2String(getActiveColor(), ";"), "");
+                llMessageLinked(LINK_SET, SET_COLOR_SYNC, llDumpList2String(getColorForSliders(), ";"), "");
             }
         }
     }
